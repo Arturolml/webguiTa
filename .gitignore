@@ -1,0 +1,26 @@
+# Entornos Virtuales de Python
+.venv/
+venv/
+ENV/
+
+# Cache y compilados de Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# Base de datos local de desarrollo
+*.db
+*.db-journal
+*.sqlite3
+
+# Logs e historial de pruebas
+logs/
+config/
+uvicorn.log
+nohup.out
+
+# Archivos de Editores e IDEs
+.vscode/
+.idea/
+.DS_Store

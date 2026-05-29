@@ -1,0 +1,49 @@
+# ==========================================
+# CONFIGURACIÓN GENERADA AUTOMÁTICAMENTE
+# POR TU WEBGUI EN PYTHON (tac_plus-ng)
+# ==========================================
+
+# Perfiles de Acceso (Políticas de Autorización)
+profile admin_profile {
+    script {
+        set priv-lvl = 15
+        {% for p in politicas_admin %}
+        if (cmd == "{{ p.command }}") { {{ p.action }} }
+        {% endfor %}
+        permit
+    }
+}
+
+profile operador_profile {
+    script {
+        set priv-lvl = 7
+        {% for p in politicas_operador %}
+        if (cmd == "{{ p.command }}") { {{ p.action }} }
+        {% endfor %}
+        permit
+    }
+}
+
+# Inventario de Equipos de Red Registrados
+{% if not lista_dispositivos %}
+# Fallback por defecto (Permitir todos)
+device all {
+    address = 0.0.0.0/0
+    key = "testing123"
+}
+{% else %}
+{% for d in lista_dispositivos %}
+device "{{ d.name }}" {
+    address = {{ d.address }}
+    key = "{{ d.key }}"
+}
+{% endfor %}
+{% endif %}
+
+# Declaración Dinámica de Usuarios desde la GUI
+{% for u in lista_usuarios %}
+user "{{ u.username }}" {
+    password login = clear {{ u.password }}
+    profile = {{ u.profile }}
+}
+{% endfor %}

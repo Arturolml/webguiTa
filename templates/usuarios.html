@@ -1,0 +1,219 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="page-header animated-fade-in">
+    <div>
+        <h1 class="page-title">Gestión de Usuarios AAA</h1>
+        <p class="page-subtitle">Administra los accesos de red, roles y contraseñas para los dispositivos.</p>
+    </div>
+    <div>
+        <button class="btn-premium" onclick="openAddModal()">
+            <i class="fa-solid fa-user-plus"></i> + Nuevo Usuario
+        </button>
+    </div>
+</div>
+
+<!-- Search and Filter Bar -->
+<div class="premium-card animated-fade-in" style="animation-delay: 0.1s; padding: 1rem 1.5rem; margin-bottom: 1.5rem;">
+    <div style="display: flex; gap: 1rem; align-items: center; width: 100%;">
+        <div style="position: relative; flex-grow: 1;">
+            <i class="fa-solid fa-magnifying-glass" style="position: absolute; left: 1rem; top: 50%; transform: translateY(-50%); color: var(--text-muted);"></i>
+            <input type="text" id="search-input" class="form-control-premium" style="padding-left: 2.75rem;" placeholder="Buscar usuarios por nombre o perfil..." oninput="filterUsers()">
+        </div>
+        <div style="width: 200px;">
+            <select id="role-filter" class="form-select-premium" onchange="filterUsers()">
+                <option value="all">Todos los Roles</option>
+                <option value="admin_profile">Administradores</option>
+                <option value="operador_profile">Operadores</option>
+            </select>
+        </div>
+    </div>
+</div>
+
+<!-- User Database Table -->
+<div class="table-container animated-fade-in" style="animation-delay: 0.15s;">
+    <table class="table-premium" id="users-table">
+        <thead>
+            <tr>
+                <th style="width: 80px;">ID</th>
+                <th>Usuario (Username)</th>
+                <th>Perfil de Autorización</th>
+                <th>Cifrado Contraseña</th>
+                <th style="text-align: right; width: 150px;">Acciones</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for u in usuarios %}
+            <tr class="user-row" data-username="{{ u.username | lower }}" data-role="{{ u.profile }}">
+                <td><span style="color: var(--text-muted); font-family: var(--font-mono);">#{{ u.id }}</span></td>
+                <td>
+                    <div style="display: flex; align-items: center; gap: 0.75rem;">
+                        <div style="width: 32px; height: 32px; border-radius: 50%; background-color: var(--bg-primary); border: 1px solid var(--border-color); display: flex; align-items: center; justify-content: center; color: var(--accent-indigo); font-weight: 700;">
+                            {{ u.username[0] | upper }}
+                        </div>
+                        <strong>{{ u.username }}</strong>
+                    </div>
+                </td>
+                <td>
+                    <span class="badge-premium {% if u.profile == 'admin_profile' %}badge-admin{% else %}badge-operator{% endif %}">
+                        {% if u.profile == 'admin_profile' %}
+                            <i class="fa-solid fa-shield-halved"></i> admin_profile
+                        {% else %}
+                            <i class="fa-solid fa-user-gear"></i> operador_profile
+                        {% endif %}
+                    </span>
+                </td>
+                <td>
+                    <small class="text-muted" style="display: flex; align-items: center; gap: 0.35rem;">
+                        <i class="fa-solid fa-lock" style="color: var(--accent-emerald);"></i> Cleartext (Nativo)
+                    </small>
+                </td>
+                <td style="text-align: right;">
+                    <div style="display: inline-flex; gap: 0.5rem; justify-content: flex-end;">
+                        <button class="btn-icon-only" title="Editar Usuario" onclick="openEditModal('{{ u.id }}', '{{ u.username }}', '{{ u.password }}', '{{ u.profile }}')">
+                            <i class="fa-solid fa-pen-to-square"></i>
+                        </button>
+                        <button class="btn-icon-only btn-icon-danger" title="Eliminar Usuario" onclick="confirmDelete('{{ u.id }}', '{{ u.username }}')">
+                            <i class="fa-solid fa-trash-can"></i>
+                        </button>
+                    </div>
+                </td>
+            </tr>
+            {% else %}
+            <tr>
+                <td colspan="5" style="text-align: center; padding: 3rem 0; color: var(--text-secondary);">
+                    <i class="fa-solid fa-users-slash" style="font-size: 2.5rem; color: var(--text-muted); margin-bottom: 1rem; display: block;"></i>
+                    No hay usuarios de red registrados.
+                </td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+
+<!-- ==================== MODALS ==================== -->
+
+<!-- Modal: Agregar Usuario -->
+<div class="modal-overlay" id="add-modal">
+    <div class="modal-premium">
+        <div class="modal-header">
+            <h5 class="modal-title"><i class="fa-solid fa-user-plus" style="color: var(--accent-emerald);"></i> Agregar Usuario a la Red</h5>
+            <button type="button" class="modal-close" onclick="closeAddModal()">&times;</button>
+        </div>
+        <form action="/usuarios/nuevo" method="POST">
+            <div class="modal-body">
+                <div class="form-group">
+                    <label class="form-label">Nombre de Usuario</label>
+                    <input type="text" name="username" class="form-control-premium" required placeholder="ej. arturo.serrano">
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Contraseña</label>
+                    <input type="password" name="password" class="form-control-premium" required placeholder="••••••••">
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Perfil de Autorización (Grupo)</label>
+                    <select name="profile" class="form-select-premium">
+                        <option value="admin_profile">Administrador de Red (Priv 15)</option>
+                        <option value="operador_profile">Operador / Soporte (Priv 7)</option>
+                    </select>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn-premium-secondary" onclick="closeAddModal()">Cancelar</button>
+                <button type="submit" class="btn-premium">Guardar Usuario</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<!-- Modal: Editar Usuario -->
+<div class="modal-overlay" id="edit-modal">
+    <div class="modal-premium">
+        <div class="modal-header">
+            <h5 class="modal-title"><i class="fa-solid fa-user-pen" style="color: var(--accent-indigo);"></i> Modificar Datos de Usuario</h5>
+            <button type="button" class="modal-close" onclick="closeEditModal()">&times;</button>
+        </div>
+        <form id="edit-form" method="POST">
+            <div class="modal-body">
+                <div class="form-group">
+                    <label class="form-label">Nombre de Usuario</label>
+                    <input type="text" id="edit-username" name="username" class="form-control-premium" required>
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Nueva Contraseña</label>
+                    <input type="password" id="edit-password" name="password" class="form-control-premium" required>
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Perfil de Autorización (Grupo)</label>
+                    <select id="edit-profile" name="profile" class="form-select-premium">
+                        <option value="admin_profile">Administrador de Red (Priv 15)</option>
+                        <option value="operador_profile">Operador / Soporte (Priv 7)</option>
+                    </select>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn-premium-secondary" onclick="closeEditModal()">Cancelar</button>
+                <button type="submit" class="btn-premium-indigo">Guardar Cambios</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<!-- Modal: Confirmar Eliminación (Formulario Oculto en background) -->
+<form id="delete-form" method="POST" style="display:none;"></form>
+
+<script>
+    // JS para filtros de usuarios en el navegador
+    function filterUsers() {
+        const query = document.getElementById('search-input').value.toLowerCase();
+        const roleFilter = document.getElementById('role-filter').value;
+        const rows = document.querySelectorAll('.user-row');
+        
+        rows.forEach(row => {
+            const username = row.getAttribute('data-username');
+            const role = row.getAttribute('data-role');
+            
+            const matchQuery = username.includes(query);
+            const matchRole = (roleFilter === 'all') || (role === roleFilter);
+            
+            if (matchQuery && matchRole) {
+                row.style.display = '';
+            } else {
+                row.style.display = 'none';
+            }
+        });
+    }
+
+    // Modal Control: Agregar
+    function openAddModal() {
+        document.getElementById('add-modal').classList.add('active');
+    }
+    
+    function closeAddModal() {
+        document.getElementById('add-modal').classList.remove('active');
+    }
+    
+    // Modal Control: Editar
+    function openEditModal(id, username, password, profile) {
+        document.getElementById('edit-form').action = `/usuarios/editar/${id}`;
+        document.getElementById('edit-username').value = username;
+        document.getElementById('edit-password').value = password;
+        document.getElementById('edit-profile').value = profile;
+        document.getElementById('edit-modal').classList.add('active');
+    }
+    
+    function closeEditModal() {
+        document.getElementById('edit-modal').classList.remove('active');
+    }
+    
+    // Eliminar Confirmación
+    function confirmDelete(id, username) {
+        const confirmResult = confirm(`¿Estás seguro de que deseas eliminar permanentemente el usuario "${username}"?`);
+        if (confirmResult) {
+            const deleteForm = document.getElementById('delete-form');
+            deleteForm.action = `/usuarios/eliminar/${id}`;
+            deleteForm.submit();
+        }
+    }
+</script>
+{% endblock %}

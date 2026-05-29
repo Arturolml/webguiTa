@@ -1,0 +1,237 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>TACACS+ NG WebGUI</title>
+    <!-- FontAwesome for Premium Icons -->
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
+    <!-- Our Ultra-Premium Vanilla CSS Style -->
+    <link href="/static/css/style.css" rel="stylesheet">
+</head>
+<body>
+
+<div class="app-container">
+    <!-- Sidebar -->
+    <div class="sidebar">
+        <div class="sidebar-brand">
+            <div class="sidebar-logo">T</div>
+            <div class="sidebar-brand-name">TACACS+ NG</div>
+        </div>
+        
+        <!-- Active Linux User Session -->
+        <div style="margin-top: -2rem; margin-bottom: 2rem; display: flex; align-items: center; gap: 0.5rem; background-color: rgba(255,255,255,0.03); border: 1px solid var(--border-color); padding: 0.5rem 0.75rem; border-radius: 8px;">
+            <div style="width: 8px; height: 8px; border-radius: 50%; background-color: var(--accent-emerald); box-shadow: 0 0 8px var(--accent-emerald);"></div>
+            <span style="font-size: 0.75rem; font-weight: 600; color: var(--text-secondary);">Usuario: </span>
+            <span style="font-size: 0.75rem; font-weight: 700; color: white; font-family: var(--font-mono);">{{ session_user }}</span>
+        </div>
+        
+        <nav class="sidebar-menu">
+            <a href="/" class="sidebar-link {% if current_page == 'dashboard' %}active{% endif %}">
+                <i class="fa-solid fa-chart-pie"></i> Dashboard
+            </a>
+            <a href="/usuarios" class="sidebar-link {% if current_page == 'usuarios' %}active{% endif %}">
+                <i class="fa-solid fa-users-gear"></i> Usuarios AAA
+            </a>
+            <a href="/dispositivos" class="sidebar-link {% if current_page == 'dispositivos' %}active{% endif %}">
+                <i class="fa-solid fa-network-wired"></i> Equipos de Red
+            </a>
+            <a href="/politicas" class="sidebar-link {% if current_page == 'politicas' %}active{% endif %}">
+                <i class="fa-solid fa-shield-halved"></i> Políticas de Comando
+            </a>
+            <a href="/configuracion" class="sidebar-link {% if current_page == 'configuracion' %}active{% endif %}">
+                <i class="fa-solid fa-sliders"></i> Configuración
+            </a>
+            <a href="/logs" class="sidebar-link {% if current_page == 'logs' %}active{% endif %}">
+                <i class="fa-solid fa-clipboard-list"></i> Auditoría de Comandos
+            </a>
+            <a href="/logout" class="sidebar-link" style="color: var(--accent-rose); margin-top: 1rem; border-top: 1px solid var(--border-color); border-radius: 0; padding-top: 1rem;">
+                <i class="fa-solid fa-right-from-bracket"></i> Cerrar Sesión
+            </a>
+        </nav>
+        
+        <div class="sidebar-footer">
+            <div class="service-status-badge">
+                <div id="sidebar-status-dot" class="status-dot {% if not service_active %}inactive{% endif %}"></div>
+                <div>
+                    <div id="sidebar-status-lbl" class="status-label {% if not service_active %}inactive{% endif %}">
+                        {% if service_active %}ONLINE{% else %}OFFLINE{% endif %}
+                    </div>
+                    <div style="font-size: 0.7rem; color: var(--text-muted);" id="sidebar-status-details">
+                        {% if service_active %}Puerto {% if is_root_mode %}49{% else %}4949{% endif %}{% else %}Servicio detenido{% endif %}
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Main Content -->
+    <div class="main-content">
+        {% block content %}
+        <div class="page-header animated-fade-in">
+            <div>
+                <h1 class="page-title">Panel de Control</h1>
+                <p class="page-subtitle">Monitoreo del servidor TACACS+ Next-Generation en tiempo real.</p>
+            </div>
+            <div>
+                <a href="/configuracion" class="btn-premium-indigo">
+                    <i class="fa-solid fa-sliders"></i> Ajustar Configuración
+                </a>
+            </div>
+        </div>
+        
+        <!-- Live Dashboard Widgets -->
+        <div class="dashboard-grid animated-fade-in" style="animation-delay: 0.1s;">
+            <!-- Service Status -->
+            <div class="premium-card card-accent-indigo">
+                <div class="card-stat-header">
+                    <span>Estado del Daemon</span>
+                    <i class="fa-solid fa-server card-stat-icon"></i>
+                </div>
+                <div class="card-stat-value" id="dash-status-text">
+                    {% if service_active %}Activo{% else %}Inactivo{% endif %}
+                </div>
+                <div class="card-stat-desc" id="dash-status-sub">
+                    {% if service_active %}<i class="fa-solid fa-circle-check" style="color: var(--accent-emerald);"></i> En ejecución{% else %}<i class="fa-solid fa-circle-xmark" style="color: var(--accent-rose);"></i> Requiere atención{% endif %}
+                </div>
+            </div>
+            
+            <!-- Network Users -->
+            <div class="premium-card card-accent-emerald">
+                <div class="card-stat-header">
+                    <span>Usuarios Registrados</span>
+                    <i class="fa-solid fa-user-shield card-stat-icon"></i>
+                </div>
+                <div class="card-stat-value">{{ total_users }}</div>
+                <div class="card-stat-desc">
+                    <i class="fa-solid fa-user-gear"></i> {{ admins }} Admins | {{ operators }} Operadores
+                </div>
+            </div>
+            
+            <!-- Active Sessions -->
+            <div class="premium-card card-accent-violet">
+                <div class="card-stat-header">
+                    <span>Carga del Sistema</span>
+                    <i class="fa-solid fa-microchip card-stat-icon"></i>
+                </div>
+                <div class="card-stat-value" id="dash-cpu-val">- %</div>
+                <div class="card-stat-desc" id="dash-mem-val">
+                    Uso de Memoria: - MB
+                </div>
+            </div>
+        </div>
+        
+        <!-- System Logs Teaser -->
+        <div class="premium-card animated-fade-in" style="animation-delay: 0.2s; margin-top: 1.5rem;">
+            <div class="card-stat-header" style="margin-bottom: 1.5rem;">
+                <span style="font-size: 1rem; font-weight: 700; color: white;">Eventos AAA Recientes</span>
+                <a href="/logs" class="btn-premium-secondary" style="padding: 0.4rem 1rem; font-size: 0.8rem;">Ver todos</a>
+            </div>
+            <div class="terminal-window" style="margin-bottom: 0;">
+                <div class="terminal-header">
+                    <div class="terminal-dots">
+                        <div class="terminal-dot td-red"></div>
+                        <div class="terminal-dot td-yellow"></div>
+                        <div class="terminal-dot td-green"></div>
+                    </div>
+                    <div class="terminal-title">tac_plus-ng.log</div>
+                </div>
+                <div class="terminal-body" id="dash-logs-body" style="height: 220px; font-size: 0.8rem;">
+                    <div class="terminal-line info">Cargando eventos recientes de auditoría...</div>
+                </div>
+            </div>
+        </div>
+        {% endblock %}
+    </div>
+</div>
+
+<script>
+    // Live Dashboard Polling
+    function updateDashboardStatus() {
+        fetch('/api/status')
+            .then(res => res.json())
+            .then(data => {
+                const sidebarDot = document.getElementById('sidebar-status-dot');
+                const sidebarLbl = document.getElementById('sidebar-status-lbl');
+                const sidebarDetails = document.getElementById('sidebar-status-details');
+                
+                // Sidebar badge
+                if (data.active) {
+                    sidebarDot.classList.remove('inactive');
+                    sidebarLbl.classList.remove('inactive');
+                    sidebarLbl.textContent = 'ONLINE';
+                    sidebarDetails.textContent = `Puerto ${data.port} | PID ${data.pid}`;
+                } else {
+                    sidebarDot.classList.add('inactive');
+                    sidebarLbl.classList.add('inactive');
+                    sidebarLbl.textContent = 'OFFLINE';
+                    sidebarDetails.textContent = 'Servicio detenido';
+                }
+                
+                // Dashboard Card 1 (if in dashboard)
+                const dashStatusText = document.getElementById('dash-status-text');
+                const dashStatusSub = document.getElementById('dash-status-sub');
+                if (dashStatusText) {
+                    dashStatusText.textContent = data.active ? 'Activo' : 'Inactivo';
+                    dashStatusSub.innerHTML = data.active 
+                        ? `<i class="fa-solid fa-circle-check" style="color: var(--accent-emerald);"></i> En ejecución (${data.mode})`
+                        : `<i class="fa-solid fa-circle-xmark" style="color: var(--accent-rose);"></i> Requiere atención`;
+                }
+                
+                // Dashboard CPU/Mem Card 3
+                const cpuVal = document.getElementById('dash-cpu-val');
+                const memVal = document.getElementById('dash-mem-val');
+                if (cpuVal && memVal) {
+                    cpuVal.textContent = data.active ? `${data.cpu} %` : '0.0 %';
+                    memVal.textContent = data.active ? `Memoria: ${data.memory} %` : 'Memoria: 0.0 MB';
+                }
+            })
+            .catch(err => console.error("Error al obtener estado:", err));
+    }
+    
+    function fetchDashboardLogs() {
+        const logsBody = document.getElementById('dash-logs-body');
+        if (!logsBody) return;
+        
+        fetch('/api/logs')
+            .then(res => res.json())
+            .then(data => {
+                logsBody.innerHTML = '';
+                if (data.logs && data.logs.length > 0) {
+                    // Tomar últimos 5 para el dashboard teaser
+                    const recentLogs = data.logs.slice(-6);
+                    recentLogs.forEach(log => {
+                        const div = document.createElement('div');
+                        div.className = 'terminal-line';
+                        
+                        // Resaltar palabras clave
+                        if (log.includes('successful') || log.includes('SUCCESS') || log.includes('approved')) {
+                            div.className = 'terminal-line success';
+                        } else if (log.includes('failed') || log.includes('ERROR') || log.includes('denied')) {
+                            div.className = 'terminal-line error';
+                        } else if (log.includes('INFO')) {
+                            div.className = 'terminal-line info';
+                        }
+                        
+                        div.textContent = log;
+                        logsBody.appendChild(div);
+                    });
+                } else {
+                    logsBody.innerHTML = '<div class="terminal-line warning">No se encontraron logs AAA del sistema.</div>';
+                }
+            })
+            .catch(err => {
+                console.error("Error al obtener logs:", err);
+                logsBody.innerHTML = '<div class="terminal-line error">Error al comunicar con la API de logs.</div>';
+            });
+    }
+
+    // Inicializar polling
+    updateDashboardStatus();
+    fetchDashboardLogs();
+    
+    setInterval(updateDashboardStatus, 5000);
+    setInterval(fetchDashboardLogs, 8000);
+</script>
+</body>
+</html>

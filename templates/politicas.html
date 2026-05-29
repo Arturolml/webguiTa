@@ -1,0 +1,171 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="page-header animated-fade-in">
+    <div>
+        <h1 class="page-title">Políticas de Control de Comandos</h1>
+        <p class="page-subtitle">Restringe o autoriza la ejecución de comandos de red específicos para tus perfiles de usuario.</p>
+    </div>
+    <div>
+        <button class="btn-premium" onclick="openAddModal()">
+            <i class="fa-solid fa-shield-halved"></i> + Nueva Restricción
+        </button>
+    </div>
+</div>
+
+<!-- Grid of Active Profiles -->
+<div class="dashboard-grid animated-fade-in" style="animation-delay: 0.1s; margin-bottom: 2rem;">
+    <!-- Admin Profile Status -->
+    <div class="premium-card card-accent-rose" style="padding: 1.25rem 1.5rem;">
+        <div class="card-stat-header" style="margin-bottom: 0.5rem;">
+            <span>Nivel de Acceso</span>
+            <i class="fa-solid fa-user-shield card-stat-icon"></i>
+        </div>
+        <div style="font-size: 1.25rem; font-weight: 700; color: white; margin-bottom: 0.25rem;">admin_profile</div>
+        <div style="font-size: 0.8rem; color: var(--text-secondary);">
+            Nivel de Privilegios: <strong>15</strong> (Acceso Total por Defecto)
+        </div>
+    </div>
+    
+    <!-- Operator Profile Status -->
+    <div class="premium-card card-accent-indigo" style="padding: 1.25rem 1.5rem;">
+        <div class="card-stat-header" style="margin-bottom: 0.5rem;">
+            <span>Nivel de Acceso</span>
+            <i class="fa-solid fa-user-gear card-stat-icon"></i>
+        </div>
+        <div style="font-size: 1.25rem; font-weight: 700; color: white; margin-bottom: 0.25rem;">operador_profile</div>
+        <div style="font-size: 0.8rem; color: var(--text-secondary);">
+            Nivel de Privilegios: <strong>7</strong> (Acceso Limitado)
+        </div>
+    </div>
+</div>
+
+<!-- Policies Table -->
+<div class="table-container animated-fade-in" style="animation-delay: 0.15s;">
+    <table class="table-premium" id="policies-table">
+        <thead>
+            <tr>
+                <th style="width: 80px;">ID</th>
+                <th>Perfil de Usuario (Profile)</th>
+                <th>Comando Restringido (Filtro)</th>
+                <th>Acción Aplicada (Action)</th>
+                <th style="text-align: right; width: 150px;">Acciones</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for p in politicas %}
+            <tr class="policy-row">
+                <td><span style="color: var(--text-muted); font-family: var(--font-mono);">#{{ p.id }}</span></td>
+                <td>
+                    <span class="badge-premium {% if p.profile == 'admin_profile' %}badge-admin{% else %}badge-operator{% endif %}">
+                        {% if p.profile == 'admin_profile' %}
+                            <i class="fa-solid fa-shield-halved"></i> admin_profile
+                        {% else %}
+                            <i class="fa-solid fa-user-gear"></i> operador_profile
+                        {% endif %}
+                    </span>
+                </td>
+                <td>
+                    <code style="font-family: var(--font-mono); color: #fda4af; background-color: rgba(244, 63, 94, 0.08); padding: 0.25rem 0.5rem; border-radius: 4px; font-weight: 600;">{{ p.command }}</code>
+                </td>
+                <td>
+                    <span class="badge-premium" style="background-color: rgba(244, 63, 94, 0.12); border: 1px solid rgba(244, 63, 94, 0.2); color: #f43f5e; font-weight: 700;">
+                        <i class="fa-solid fa-ban" style="margin-right: 0.35rem;"></i> RECHAZAR (DENY)
+                    </span>
+                </td>
+                <td style="text-align: right;">
+                    <button class="btn-icon-only btn-icon-danger" title="Eliminar Restricción" onclick="confirmDelete('{{ p.id }}', '{{ p.profile }}', '{{ p.command }}')">
+                        <i class="fa-solid fa-trash-can"></i>
+                    </button>
+                </td>
+            </tr>
+            {% else %}
+            <tr>
+                <td colspan="5" style="text-align: center; padding: 3rem 0; color: var(--text-secondary);">
+                    <i class="fa-solid fa-circle-check" style="font-size: 2.5rem; color: var(--accent-emerald); margin-bottom: 1rem; display: block;"></i>
+                    No hay restricciones de comandos activas. Los perfiles operan con sus permisos nativos totales.
+                </td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+
+<!-- ==================== MODALS ==================== -->
+
+<!-- Modal: Agregar Restricción -->
+<div class="modal-overlay" id="add-modal">
+    <div class="modal-premium">
+        <div class="modal-header">
+            <h5 class="modal-title"><i class="fa-solid fa-shield-halved" style="color: var(--accent-rose);"></i> Restringir Comando</h5>
+            <button class="modal-close" onclick="closeAddModal()">&times;</button>
+        </div>
+        <form action="/politicas/nuevo" method="POST">
+            <div class="modal-body">
+                <div class="form-group">
+                    <label class="form-label">Perfil de Usuario</label>
+                    <select name="profile" class="form-select-premium" required>
+                        <option value="operador_profile">operador_profile (Privilegio 7)</option>
+                        <option value="admin_profile">admin_profile (Privilegio 15)</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Comando a Bloquear</label>
+                    <input type="text" name="command" class="form-control-premium" required placeholder="Ej. reload o configure terminal">
+                    <small style="color: var(--text-muted); display: block; margin-top: 0.4rem; font-size: 0.75rem;">
+                        <i class="fa-solid fa-info-circle"></i> Escribe el comando exacto o patrón que el usuario no podrá ejecutar.
+                    </small>
+                </div>
+                <input type="hidden" name="action" value="deny">
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn-premium-secondary" onclick="closeAddModal()">Cancelar</button>
+                <button type="submit" class="btn-premium" style="background: var(--accent-rose); box-shadow: 0 4px 15px var(--accent-rose-glow);">Bloquear Comando</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<!-- Modal: Eliminar Restricción (Confirmación) -->
+<div class="modal-overlay" id="delete-modal">
+    <div class="modal-premium">
+        <div class="modal-header" style="border-bottom-color: rgba(244, 63, 94, 0.2);">
+            <h5 class="modal-title" style="color: var(--accent-rose);"><i class="fa-solid fa-triangle-exclamation"></i> ¿Quitar Restricción?</h5>
+            <button class="modal-close" onclick="closeDeleteModal()">&times;</button>
+        </div>
+        <form id="delete-form" method="POST">
+            <div class="modal-body">
+                <p style="color: var(--text-secondary); line-height: 1.6;">
+                    ¿Deseas eliminar la restricción sobre el comando <code id="delete-policy-command" style="font-family: var(--font-mono); color: #fda4af; background-color: rgba(244, 63, 94, 0.08); padding: 0.25rem 0.5rem; border-radius: 4px;"></code> para el perfil <strong id="delete-policy-profile" style="color: white;"></strong>? 
+                    Esto le devolverá el permiso de ejecución de forma inmediata.
+                </p>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn-premium-secondary" onclick="closeDeleteModal()">Cancelar</button>
+                <button type="submit" class="btn-premium">Autorizar Comando</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<script>
+    // Modal Control: Add
+    function openAddModal() {
+        document.getElementById('add-modal').classList.add('active');
+    }
+    function closeAddModal() {
+        document.getElementById('add-modal').classList.remove('active');
+    }
+
+    // Modal Control: Delete
+    function confirmDelete(id, profile, command) {
+        document.getElementById('delete-policy-command').textContent = command;
+        document.getElementById('delete-policy-profile').textContent = profile;
+        document.getElementById('delete-form').action = `/politicas/eliminar/${id}`;
+        document.getElementById('delete-modal').classList.add('active');
+    }
+    function closeDeleteModal() {
+        document.getElementById('delete-modal').classList.remove('active');
+    }
+</script>
+{% endblock %}

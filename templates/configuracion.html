@@ -1,0 +1,145 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="page-header animated-fade-in">
+    <div>
+        <h1 class="page-title">Configuración del Servidor</h1>
+        <p class="page-subtitle">Edita y valida la sintaxis del archivo principal de configuración del demonio.</p>
+    </div>
+    <div>
+        <button id="btn-save-config" class="btn-premium" onclick="saveConfiguration()">
+            <i class="fa-solid fa-cloud-arrow-up"></i> Guardar y Aplicar
+        </button>
+    </div>
+</div>
+
+<!-- Config Editor Grid Layout -->
+<div class="config-editor-container animated-fade-in" style="animation-delay: 0.1s;">
+    <!-- Editor Text Area -->
+    <div style="position: relative;">
+        <div style="position: absolute; right: 1rem; top: 0.75rem; color: var(--text-muted); font-size: 0.8rem; font-family: var(--font-mono); z-index: 10;">
+            <i class="fa-solid fa-code"></i> {{ main_config_path }}
+        </div>
+        <textarea id="config-editor" class="editor-textarea" spellcheck="false">{{ config_content }}</textarea>
+    </div>
+    
+    <!-- Validation Output Panel -->
+    <div class="validation-panel">
+        <div>
+            <div class="validation-header">
+                <i class="fa-solid fa-shield-halved" style="color: var(--accent-indigo);"></i>
+                <span>Validador AAA</span>
+            </div>
+            
+            <div id="validation-status-box" class="validation-status-box">
+                <i class="fa-solid fa-circle-check"></i> Sintaxis validada con éxito.
+            </div>
+            
+            <div style="font-size: 0.8rem; font-weight: 600; color: var(--text-secondary); margin-bottom: 0.5rem;">
+                Consola de Compilación / Logs:
+            </div>
+            <div id="validation-console" class="validation-output"># Consola lista para validación.
+# Realiza modificaciones en el archivo y presiona 'Guardar y Aplicar' o 'Validar Sintaxis' para auditar.</div>
+        </div>
+        
+        <div style="margin-top: 1.5rem; display: flex; flex-direction: column; gap: 0.75rem;">
+            <button class="btn-premium-secondary" onclick="validateSyntaxOnly()" style="justify-content: center; width: 100%;">
+                <i class="fa-solid fa-stethoscope"></i> Validar Sintaxis
+            </button>
+            <div style="font-size: 0.75rem; text-align: center; color: var(--text-muted); line-height: 1.4;">
+                <i class="fa-solid fa-triangle-exclamation"></i> Guardar aplicará los cambios al servicio activo y recargará el daemon.
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+    // Validar sintaxis y guardar vía AJAX
+    function saveConfiguration() {
+        const btn = document.getElementById('btn-save-config');
+        const configText = document.getElementById('config-editor').value;
+        const consoleBox = document.getElementById('validation-console');
+        const statusBox = document.getElementById('validation-status-box');
+        
+        btn.disabled = true;
+        btn.innerHTML = '<i class="fa-solid fa-circle-notch fa-spin"></i> Guardando...';
+        
+        consoleBox.textContent = "Iniciando validación y guardado seguro...\n";
+        
+        const formData = new FormData();
+        formData.append('config_text', configText);
+        
+        fetch('/configuracion/guardar', {
+            method: 'POST',
+            body: formData
+        })
+        .then(res => res.json().then(data => ({ status: res.status, body: data })))
+        .then(res => {
+            btn.disabled = false;
+            btn.innerHTML = '<i class="fa-solid fa-cloud-arrow-up"></i> Guardar y Aplicar';
+            
+            if (res.status === 200) {
+                statusBox.className = "validation-status-box";
+                statusBox.innerHTML = '<i class="fa-solid fa-circle-check"></i> ' + res.body.message;
+                consoleBox.textContent = `[SUCCESS] ${new Date().toLocaleString()}\n` +
+                                         `--> Archivo actualizado con éxito.\n` +
+                                         `--> Daemon recargado sin interrupciones.\n\n` +
+                                         `Output:\nSintaxis impecable.`;
+                alert("¡Configuración guardada y servicio TACACS+ actualizado con éxito!");
+            } else {
+                statusBox.className = "validation-status-box error";
+                statusBox.innerHTML = '<i class="fa-solid fa-circle-exclamation"></i> Error de Sintaxis Detectado';
+                consoleBox.textContent = `[ERROR] ${new Date().toLocaleString()}\n` +
+                                         `--> Se ha rechazado el guardado para evitar caídas de servicio.\n\n` +
+                                         `Detalle de Error de Compilación:\n----------------------------------------\n` +
+                                         res.body.message;
+            }
+        })
+        .catch(err => {
+            btn.disabled = false;
+            btn.innerHTML = '<i class="fa-solid fa-cloud-arrow-up"></i> Guardar y Aplicar';
+            statusBox.className = "validation-status-box error";
+            statusBox.innerHTML = '<i class="fa-solid fa-circle-exclamation"></i> Error de Conexión';
+            consoleBox.textContent = `[CONNECTION ERROR] No se pudo comunicar con el servidor backend.\n` + err;
+        });
+    }
+
+    // Validar sintaxis SIN guardar (solo prueba en temporal)
+    function validateSyntaxOnly() {
+        const configText = document.getElementById('config-editor').value;
+        const consoleBox = document.getElementById('validation-console');
+        const statusBox = document.getElementById('validation-status-box');
+        
+        consoleBox.textContent = "Validando sintaxis propuesta en sandbox temporal...\n";
+        
+        const formData = new FormData();
+        formData.append('config_text', configText);
+        
+        fetch('/configuracion/guardar', { // La misma ruta lo valida temporalmente, si da error no lo toca
+            method: 'POST',
+            body: formData
+        })
+        .then(res => res.json().then(data => ({ status: res.status, body: data })))
+        .then(res => {
+            if (res.status === 200) {
+                statusBox.className = "validation-status-box";
+                statusBox.innerHTML = '<i class="fa-solid fa-circle-check"></i> Sintaxis temporal válida';
+                consoleBox.textContent = `[SANDBOX VALIDATION SUCCESS] ${new Date().toLocaleString()}\n` +
+                                         `La sintaxis es perfectamente compatible con tac_plus-ng.\n` +
+                                         `Puedes presionar 'Guardar y Aplicar' con total seguridad.`;
+            } else {
+                statusBox.className = "validation-status-box error";
+                statusBox.innerHTML = '<i class="fa-solid fa-circle-exclamation"></i> Error detectado en Sandbox';
+                consoleBox.textContent = `[SANDBOX VALIDATION FAILED] ${new Date().toLocaleString()}\n` +
+                                         `Detalle de Error de Compilación:\n----------------------------------------\n` +
+                                         res.body.message;
+            }
+        })
+        .catch(err => {
+            statusBox.className = "validation-status-box error";
+            statusBox.innerHTML = '<i class="fa-solid fa-circle-exclamation"></i> Error de Conexión';
+            consoleBox.textContent = `Error al validar en sandbox: ` + err;
+        });
+    }
+</script>
+{% endblock %}

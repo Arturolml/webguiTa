@@ -1,0 +1,310 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="page-header animated-fade-in">
+    <div>
+        <h1 class="page-title">Centro de Auditoría AAA</h1>
+        <p class="page-subtitle">Monitorea y analiza las solicitudes de Autenticación, Autorización y Contabilización (Accounting) en vivo.</p>
+    </div>
+    <div style="display: inline-flex; gap: 0.75rem;">
+        <button class="btn-premium-secondary" onclick="clearConsole()">
+            <i class="fa-solid fa-trash-can"></i> Limpiar Registros
+        </button>
+        <button id="btn-toggle-live" class="btn-premium-indigo" onclick="toggleLiveLogs()">
+            <i class="fa-solid fa-pause"></i> Pausar Live
+        </button>
+    </div>
+</div>
+
+<!-- Premium Tabs Header -->
+<div class="animated-fade-in" style="display: flex; gap: 0.5rem; margin-bottom: 1.5rem;">
+    <button id="tab-btn-accounting" class="btn-premium-indigo" style="padding: 0.6rem 1.25rem; font-size: 0.85rem; border-radius: 8px 8px 0 0;" onclick="switchTab('accounting')">
+        <i class="fa-solid fa-clipboard-list"></i> Auditoría de Comandos (Accounting)
+    </button>
+    <button id="tab-btn-terminal" class="btn-premium-secondary" style="padding: 0.6rem 1.25rem; font-size: 0.85rem; border-radius: 8px 8px 0 0;" onclick="switchTab('terminal')">
+        <i class="fa-solid fa-terminal"></i> Consola del Sistema (Daemon Logs)
+    </button>
+</div>
+
+<!-- Controls Panel -->
+<div class="premium-card animated-fade-in" style="animation-delay: 0.1s; padding: 1rem 1.5rem; margin-bottom: 1.5rem;">
+    <div style="display: flex; gap: 1rem; align-items: center; flex-wrap: wrap;">
+        <!-- Live Status indicator -->
+        <div style="display: flex; align-items: center; gap: 0.5rem; margin-right: 1rem;">
+            <div id="live-indicator-dot" class="status-dot" style="animation: pulse 1.5s infinite;"></div>
+            <span id="live-indicator-text" style="font-size: 0.85rem; font-weight: 700; color: var(--accent-emerald);">CAPTURA EN VIVO ACTIVA</span>
+        </div>
+        
+        <!-- Filter and Search -->
+        <div style="position: relative; flex-grow: 1; min-width: 250px;">
+            <i class="fa-solid fa-magnifying-glass" style="position: absolute; left: 1rem; top: 50%; transform: translateY(-50%); color: var(--text-muted); font-size: 0.85rem;"></i>
+            <input type="text" id="log-search" class="form-control-premium" style="padding-left: 2.75rem;" placeholder="Buscar por usuario, IP de equipo o comando..." oninput="applyFilters()">
+        </div>
+    </div>
+</div>
+
+<!-- TAB CONTENT 1: Accounting (Command Auditing) -->
+<div id="tab-content-accounting" class="table-container animated-fade-in" style="animation-delay: 0.15s; margin-bottom: 2rem;">
+    <table class="table-premium" id="accounting-table">
+        <thead>
+            <tr>
+                <th style="width: 180px;">Fecha / Hora</th>
+                <th style="width: 140px;">IP Dispositivo</th>
+                <th style="width: 160px;">Usuario de Red</th>
+                <th>Comando Ejecutado</th>
+                <th style="width: 180px; text-align: right;">Estado de Acción</th>
+            </tr>
+        </thead>
+        <tbody id="accounting-rows">
+            <tr>
+                <td colspan="5" style="text-align: center; padding: 3rem 0; color: var(--text-secondary);">
+                    <i class="fa-solid fa-circle-notch fa-spin" style="font-size: 2rem; color: var(--accent-indigo); margin-bottom: 1rem; display: block;"></i>
+                    Cargando auditoría de contabilización (accounting)...
+                </td>
+            </tr>
+        </tbody>
+    </table>
+</div>
+
+<!-- TAB CONTENT 2: Raw Terminal Console -->
+<div id="tab-content-terminal" class="terminal-window animated-fade-in" style="display: none; animation-delay: 0.15s; margin-bottom: 1.5rem;">
+    <div class="terminal-header" style="justify-content: space-between;">
+        <div style="display: flex; align-items: center;">
+            <div class="terminal-dots">
+                <div class="terminal-dot td-red"></div>
+                <div class="terminal-dot td-yellow"></div>
+                <div class="terminal-dot td-green"></div>
+            </div>
+            <div class="terminal-title">tacacsd@linux-aaa:~# tail -f /var/log/tac_plus-ng.log</div>
+        </div>
+        <div style="font-size: 0.75rem; color: var(--text-muted); font-family: var(--font-mono);">
+            Auto-Scroll: <span style="color: var(--accent-emerald); font-weight: 700;">ON</span>
+        </div>
+    </div>
+    
+    <div class="terminal-body" id="logs-console-body" style="height: 520px; font-size: 0.85rem; scroll-behavior: smooth;">
+        <div class="terminal-line info">Estableciendo canal seguro de logs con el backend de tac_plus-ng...</div>
+    </div>
+</div>
+
+<style>
+    @keyframes pulse {
+        0% { transform: scale(0.9); opacity: 0.6; }
+        50% { transform: scale(1.1); opacity: 1; }
+        100% { transform: scale(0.9); opacity: 0.6; }
+    }
+</style>
+
+<script>
+    let activeTab = 'accounting';
+    let isLiveActive = true;
+    let pollerInterval = null;
+    let allRawLogs = [];
+    let allAccountingLogs = [];
+
+    function switchTab(tabName) {
+        activeTab = tabName;
+        const btnAcc = document.getElementById('tab-btn-accounting');
+        const btnTerm = document.getElementById('tab-btn-terminal');
+        const contentAcc = document.getElementById('tab-content-accounting');
+        const contentTerm = document.getElementById('tab-content-terminal');
+        const searchInput = document.getElementById('log-search');
+
+        if (tabName === 'accounting') {
+            btnAcc.className = 'btn-premium-indigo';
+            btnTerm.className = 'btn-premium-secondary';
+            contentAcc.style.display = '';
+            contentTerm.style.display = 'none';
+            searchInput.placeholder = "Buscar por usuario, IP de equipo o comando...";
+        } else {
+            btnAcc.className = 'btn-premium-secondary';
+            btnTerm.className = 'btn-premium-indigo';
+            contentAcc.style.display = 'none';
+            contentTerm.style.display = '';
+            searchInput.placeholder = "Filtrar logs en tiempo real (ej. admin, 10.1.7.52)...";
+        }
+        applyFilters();
+    }
+
+    function fetchLogs() {
+        if (!isLiveActive) return;
+        
+        // 1. Cargar logs de auditoría de comandos (accounting)
+        fetch('/api/logs/accounting')
+            .then(res => res.json())
+            .then(data => {
+                if (data.status === 'success') {
+                    allAccountingLogs = data.logs;
+                    if (activeTab === 'accounting') {
+                        renderAccounting();
+                    }
+                }
+            })
+            .catch(err => console.error("Error al cargar auditoría:", err));
+
+        // 2. Cargar logs del terminal clásico
+        fetch('/api/logs')
+            .then(res => res.json())
+            .then(data => {
+                if (data.logs) {
+                    allRawLogs = data.logs;
+                    if (activeTab === 'terminal') {
+                        renderTerminal();
+                    }
+                }
+            })
+            .catch(err => console.error("Error al cargar logs terminal:", err));
+    }
+
+    function renderAccounting() {
+        const rowsContainer = document.getElementById('accounting-rows');
+        const searchVal = document.getElementById('log-search').value.toLowerCase();
+        
+        rowsContainer.innerHTML = '';
+        let count = 0;
+
+        allAccountingLogs.forEach(log => {
+            const matchesSearch = 
+                log.user.toLowerCase().includes(searchVal) ||
+                log.host.includes(searchVal) ||
+                log.command.toLowerCase().includes(searchVal) ||
+                log.timestamp.includes(searchVal);
+
+            if (matchesSearch) {
+                const tr = document.createElement('tr');
+                
+                // Color y formato del badge de estado
+                let badgeClass = 'badge-operator';
+                let iconClass = 'fa-circle-check';
+                let actionText = 'Permitido';
+                
+                if (log.action.includes('deny') || log.action.includes('denied') || log.action.includes('Rechazado')) {
+                    badgeClass = 'badge-admin';
+                    iconClass = 'fa-circle-xmark';
+                    actionText = 'Denegado';
+                }
+
+                tr.innerHTML = `
+                    <td><span style="color: var(--text-muted); font-size: 0.85rem;"><i class="fa-solid fa-clock"></i> ${log.timestamp}</span></td>
+                    <td><code style="font-family: var(--font-mono); color: var(--accent-indigo); background: rgba(99, 102, 241, 0.08); padding: 0.15rem 0.35rem; border-radius: 4px;">${log.host}</code></td>
+                    <td>
+                        <div style="display: flex; align-items: center; gap: 0.5rem;">
+                            <div style="width: 24px; height: 24px; border-radius: 50%; background: var(--bg-primary); border: 1px solid var(--border-color); display: flex; align-items: center; justify-content: center; font-size: 0.75rem; font-weight: 700; color: var(--accent-emerald);">
+                                ${log.user[0].toUpperCase()}
+                            </div>
+                            <strong>${log.user}</strong>
+                        </div>
+                    </td>
+                    <td><code style="font-family: var(--font-mono); color: var(--text-primary);">${log.command}</code></td>
+                    <td style="text-align: right;">
+                        <span class="badge-premium ${badgeClass}" style="font-size: 0.7rem; padding: 0.25rem 0.5rem;">
+                            <i class="fa-solid ${iconClass}" style="margin-right: 0.25rem;"></i> ${actionText}
+                        </span>
+                    </td>
+                `;
+                rowsContainer.appendChild(tr);
+                count++;
+            }
+        });
+
+        if (count === 0) {
+            rowsContainer.innerHTML = `
+                <tr>
+                    <td colspan="5" style="text-align: center; padding: 3rem 0; color: var(--text-secondary);">
+                        <i class="fa-solid fa-clipboard-question" style="font-size: 2.5rem; color: var(--text-muted); margin-bottom: 1rem; display: block;"></i>
+                        No se encontraron registros de comandos con los filtros aplicados.
+                    </td>
+                </tr>
+            `;
+        }
+    }
+
+    function renderTerminal() {
+        const consoleBody = document.getElementById('logs-console-body');
+        const searchVal = document.getElementById('log-search').value.toLowerCase();
+        
+        consoleBody.innerHTML = '';
+        let count = 0;
+
+        allRawLogs.forEach(log => {
+            if (log.toLowerCase().includes(searchVal)) {
+                const div = document.createElement('div');
+                div.className = 'terminal-line';
+
+                if (log.includes('successful') || log.includes('approved') || log.includes('SUCCESS')) {
+                    div.className = 'terminal-line success';
+                } else if (log.includes('failed') || log.includes('denied') || log.includes('incorrect') || log.includes('ERROR')) {
+                    div.className = 'terminal-line error';
+                } else if (log.includes('warning') || log.includes('WARN')) {
+                    div.className = 'terminal-line warning';
+                } else {
+                    div.className = 'terminal-line info';
+                }
+
+                div.textContent = log;
+                consoleBody.appendChild(div);
+                count++;
+            }
+        });
+
+        if (count === 0) {
+            consoleBody.innerHTML = '<div class="terminal-line warning">No se encontraron líneas de log coincidentes.</div>';
+        } else {
+            consoleBody.scrollTop = consoleBody.scrollHeight;
+        }
+    }
+
+    function applyFilters() {
+        if (activeTab === 'accounting') {
+            renderAccounting();
+        } else {
+            renderTerminal();
+        }
+    }
+
+    function clearConsole() {
+        if (activeTab === 'accounting') {
+            allAccountingLogs = [];
+            document.getElementById('accounting-rows').innerHTML = `
+                <tr>
+                    <td colspan="5" style="text-align: center; padding: 3rem 0; color: var(--text-secondary);">
+                        Registros de auditoría borrados. Esperando nuevos eventos...
+                    </td>
+                </tr>
+            `;
+        } else {
+            allRawLogs = [];
+            document.getElementById('logs-console-body').innerHTML = '<div class="terminal-line info">Consola limpiada por el usuario. Esperando nuevos registros del sistema...</div>';
+        }
+    }
+
+    function toggleLiveLogs() {
+        const btn = document.getElementById('btn-toggle-live');
+        const dot = document.getElementById('live-indicator-dot');
+        const lbl = document.getElementById('live-indicator-text');
+        
+        isLiveActive = !isLiveActive;
+        
+        if (isLiveActive) {
+            btn.innerHTML = '<i class="fa-solid fa-pause"></i> Pausar Live';
+            btn.className = 'btn-premium-indigo';
+            dot.style.animation = 'pulse 1.5s infinite';
+            dot.style.backgroundColor = 'var(--accent-emerald)';
+            lbl.textContent = 'CAPTURA EN VIVO ACTIVA';
+            lbl.style.color = 'var(--accent-emerald)';
+            fetchLogs();
+        } else {
+            btn.innerHTML = '<i class="fa-solid fa-play"></i> Reanudar Live';
+            btn.className = 'btn-premium';
+            dot.style.animation = 'none';
+            dot.style.backgroundColor = 'var(--accent-amber)';
+            lbl.textContent = 'CAPTURA EN VIVO DETENIDA';
+            lbl.style.color = 'var(--accent-amber)';
+        }
+    }
+
+    // Inicializar
+    fetchLogs();
+    setInterval(fetchLogs, 3000);
+</script>
+{% endblock %}

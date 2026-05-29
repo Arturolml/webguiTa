@@ -1,0 +1,232 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="page-header animated-fade-in">
+    <div>
+        <h1 class="page-title">Inventario de Equipos de Red</h1>
+        <p class="page-subtitle">Gestiona los switches, routers y servidores clientes autorizados a conectarse al servidor TACACS+.</p>
+    </div>
+    <div>
+        <button class="btn-premium" onclick="openAddModal()">
+            <i class="fa-solid fa-square-plus"></i> + Nuevo Equipo
+        </button>
+    </div>
+</div>
+
+<!-- Search and Filter Bar -->
+<div class="premium-card animated-fade-in" style="animation-delay: 0.1s; padding: 1rem 1.5rem; margin-bottom: 1.5rem;">
+    <div style="display: flex; gap: 1rem; align-items: center; width: 100%;">
+        <div style="position: relative; flex-grow: 1;">
+            <i class="fa-solid fa-magnifying-glass" style="position: absolute; left: 1rem; top: 50%; transform: translateY(-50%); color: var(--text-muted);"></i>
+            <input type="text" id="search-input" class="form-control-premium" style="padding-left: 2.75rem;" placeholder="Buscar equipos por nombre o dirección IP..." oninput="filterDevices()">
+        </div>
+    </div>
+</div>
+
+<!-- Devices Database Table -->
+<div class="table-container animated-fade-in" style="animation-delay: 0.15s;">
+    <table class="table-premium" id="devices-table">
+        <thead>
+            <tr>
+                <th style="width: 80px;">ID</th>
+                <th>Nombre del Dispositivo</th>
+                <th>Dirección IP / Subred</th>
+                <th>Clave Precompartida (TACACS+ Key)</th>
+                <th style="text-align: right; width: 150px;">Acciones</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for d in dispositivos %}
+            <tr class="device-row" data-name="{{ d.name | lower }}" data-address="{{ d.address }}">
+                <td><span style="color: var(--text-muted); font-family: var(--font-mono);">#{{ d.id }}</span></td>
+                <td>
+                    <div style="display: flex; align-items: center; gap: 0.75rem;">
+                        <div style="width: 32px; height: 32px; border-radius: 50%; background-color: var(--bg-primary); border: 1px solid var(--border-color); display: flex; align-items: center; justify-content: center; color: var(--accent-emerald); font-weight: 700;">
+                            <i class="fa-solid fa-network-wired" style="font-size: 0.9rem;"></i>
+                        </div>
+                        <strong>{{ d.name }}</strong>
+                    </div>
+                </td>
+                <td>
+                    <code style="font-family: var(--font-mono); color: var(--accent-indigo); background-color: rgba(99, 102, 241, 0.1); padding: 0.25rem 0.5rem; border-radius: 4px;">{{ d.address }}</code>
+                </td>
+                <td>
+                    <div style="display: flex; align-items: center; gap: 0.5rem;">
+                        <input type="password" class="key-field" value="{{ d.key }}" disabled style="background: transparent; border: none; color: var(--text-secondary); font-family: var(--font-mono); font-size: 0.9rem; width: 120px;">
+                        <button class="btn-icon-only" style="width: 28px; height: 28px;" title="Ver Clave" onclick="toggleKeyVisibility(this)">
+                            <i class="fa-solid fa-eye" style="font-size: 0.75rem;"></i>
+                        </button>
+                    </div>
+                </td>
+                <td style="text-align: right;">
+                    <div style="display: inline-flex; gap: 0.5rem; justify-content: flex-end;">
+                        <button class="btn-icon-only" title="Editar Equipo" onclick="openEditModal('{{ d.id }}', '{{ d.name }}', '{{ d.address }}', '{{ d.key }}')">
+                            <i class="fa-solid fa-pen-to-square"></i>
+                        </button>
+                        <button class="btn-icon-only btn-icon-danger" title="Eliminar Equipo" onclick="confirmDelete('{{ d.id }}', '{{ d.name }}')">
+                            <i class="fa-solid fa-trash-can"></i>
+                        </button>
+                    </div>
+                </td>
+            </tr>
+            {% else %}
+            <tr>
+                <td colspan="5" style="text-align: center; padding: 3rem 0; color: var(--text-secondary);">
+                    <i class="fa-solid fa-folder-open" style="font-size: 2.5rem; color: var(--text-muted); margin-bottom: 1rem; display: block;"></i>
+                    No hay equipos de red registrados. Todos los dispositivos usarán la configuración por defecto de <code>device all</code>.
+                </td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+
+<!-- ==================== MODALS ==================== -->
+
+<!-- Modal: Agregar Equipo -->
+<div class="modal-overlay" id="add-modal">
+    <div class="modal-premium">
+        <div class="modal-header">
+            <h5 class="modal-title"><i class="fa-solid fa-square-plus" style="color: var(--accent-emerald);"></i> Registrar Nuevo Equipo</h5>
+            <button class="modal-close" onclick="closeAddModal()">&times;</button>
+        </div>
+        <form action="/dispositivos/nuevo" method="POST">
+            <div class="modal-body">
+                <div class="form-group">
+                    <label class="form-label">Nombre Identificador</label>
+                    <input type="text" name="name" class="form-control-premium" required placeholder="Ej. Switch-Core-01">
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Dirección IP o Subred (CIDR)</label>
+                    <input type="text" name="address" class="form-control-premium" required placeholder="Ej. 10.1.7.52 o 10.1.7.0/24">
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Clave Precompartida (TACACS+ Key)</label>
+                    <input type="text" name="key" class="form-control-premium" required placeholder="Ej. testing123">
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn-premium-secondary" onclick="closeAddModal()">Cancelar</button>
+                <button type="submit" class="btn-premium">Guardar Equipo</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<!-- Modal: Editar Equipo -->
+<div class="modal-overlay" id="edit-modal">
+    <div class="modal-premium">
+        <div class="modal-header">
+            <h5 class="modal-title"><i class="fa-solid fa-pen-to-square" style="color: var(--accent-indigo);"></i> Editar Equipo de Red</h5>
+            <button class="modal-close" onclick="closeEditModal()">&times;</button>
+        </div>
+        <form id="edit-form" method="POST">
+            <div class="modal-body">
+                <div class="form-group">
+                    <label class="form-label">Nombre Identificador</label>
+                    <input type="text" name="name" id="edit-name" class="form-control-premium" required>
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Dirección IP o Subred (CIDR)</label>
+                    <input type="text" name="address" id="edit-address" class="form-control-premium" required>
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Clave Precompartida (TACACS+ Key)</label>
+                    <input type="text" name="key" id="edit-key" class="form-control-premium" required>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn-premium-secondary" onclick="closeEditModal()">Cancelar</button>
+                <button type="submit" class="btn-premium-indigo">Actualizar</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<!-- Modal: Eliminar Equipo (Confirmación) -->
+<div class="modal-overlay" id="delete-modal">
+    <div class="modal-premium">
+        <div class="modal-header" style="border-bottom-color: rgba(244, 63, 94, 0.2);">
+            <h5 class="modal-title" style="color: var(--accent-rose);"><i class="fa-solid fa-triangle-exclamation"></i> ¿Eliminar Equipo?</h5>
+            <button class="modal-close" onclick="closeDeleteModal()">&times;</button>
+        </div>
+        <form id="delete-form" method="POST">
+            <div class="modal-body">
+                <p style="color: var(--text-secondary); line-height: 1.6;">
+                    ¿Estás seguro de que deseas eliminar el equipo <strong id="delete-device-name" style="color: white;"></strong>? 
+                    Esto revocará de forma inmediata su autorización individual en el servidor TACACS+.
+                </p>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn-premium-secondary" onclick="closeDeleteModal()">Cancelar</button>
+                <button type="submit" class="btn-premium" style="background: var(--accent-rose); box-shadow: 0 4px 15px var(--accent-rose-glow);">Eliminar de la Red</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<script>
+    // Reveal password field key
+    deflect = true;
+    function toggleKeyVisibility(btn) {
+        const input = btn.previousElementSibling;
+        const icon = btn.querySelector('i');
+        if (input.type === "password") {
+            input.type = "text";
+            icon.classList.remove('fa-eye');
+            icon.classList.add('fa-eye-slash');
+        } else {
+            input.type = "password";
+            icon.classList.remove('fa-eye-slash');
+            icon.classList.add('fa-eye');
+        }
+    }
+
+    // Modal Control: Add
+    function openAddModal() {
+        document.getElementById('add-modal').classList.add('active');
+    }
+    function closeAddModal() {
+        document.getElementById('add-modal').classList.remove('active');
+    }
+
+    // Modal Control: Edit
+    function openEditModal(id, name, address, key) {
+        document.getElementById('edit-name').value = name;
+        document.getElementById('edit-address').value = address;
+        document.getElementById('edit-key').value = key;
+        document.getElementById('edit-form').action = `/dispositivos/editar/${id}`;
+        document.getElementById('edit-modal').classList.add('active');
+    }
+    function closeEditModal() {
+        document.getElementById('edit-modal').classList.remove('active');
+    }
+
+    // Modal Control: Delete
+    function confirmDelete(id, name) {
+        document.getElementById('delete-device-name').textContent = name;
+        document.getElementById('delete-form').action = `/dispositivos/eliminar/${id}`;
+        document.getElementById('delete-modal').classList.add('active');
+    }
+    function closeDeleteModal() {
+        document.getElementById('delete-modal').classList.remove('active');
+    }
+
+    // Search filter
+    function filterDevices() {
+        const searchVal = document.getElementById('search-input').value.toLowerCase();
+        const rows = document.querySelectorAll('.device-row');
+        
+        rows.forEach(row => {
+            const name = row.getAttribute('data-name');
+            const address = row.getAttribute('data-address');
+            
+            if (name.includes(searchVal) || address.includes(searchVal)) {
+                row.style.display = '';
+            } else {
+                row.style.display = 'none';
+            }
+        });
+    }
+</script>
+{% endblock %}
