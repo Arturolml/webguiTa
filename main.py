@@ -3,8 +3,9 @@ import os
 import subprocess
 import shutil
 import random
+import json
 from datetime import datetime
-from fastapi import FastAPI, Request, Form, Depends, HTTPException
+from fastapi import FastAPI, Request, Form, Depends, HTTPException, File, UploadFile
 from fastapi.responses import HTMLResponse, RedirectResponse, JSONResponse
 from fastapi.templating import Jinja2Templates
 from fastapi.staticfiles import StaticFiles
@@ -135,9 +136,24 @@ id = spawnd {{
 id = tac_plus-ng {{
     key = "testing123"
 
-    log authentication {{
-        destination = syslog
+    # 1. Definir los destinos de los archivos con sus respectivas rutas
+    log acctlog {{
+        destination = /home/tacacsd/frontTacacs/logs/accounting.log
+        accounting format = "%Y-%m-%d %H:%M:%S\\t${nas}\\t${user}\\t${cmd}\\t${accttype}"
     }}
+
+    log authnlog {{
+        destination = /home/tacacsd/frontTacacs/logs/authentication.log
+    }}
+
+    log authzlog {{
+        destination = /home/tacacsd/frontTacacs/logs/authorization.log
+    }}
+
+    # 2. Asignar cada proceso a su respectivo archivo de log personalizado
+    authentication log = authnlog
+    authorization log = authzlog
+    accounting log = acctlog
 
     device all {{
         address = 0.0.0.0/0
@@ -164,6 +180,13 @@ id = tac_plus-ng {{
 def inicializar_entorno():
     global TAC_CONFIG_PATH, MAIN_CONFIG_PATH, IS_ROOT_MODE
     
+    # Asegurar la existencia del directorio de logs en cualquier modo
+    try:
+        os.makedirs("/home/tacacsd/frontTacacs/logs", exist_ok=True)
+        os.chmod("/home/tacacsd/frontTacacs/logs", 0o777)
+    except Exception as e:
+        print("Advertencia al crear o cambiar permisos del directorio de logs:", e)
+        
     test_path = "/etc/tac_plus-ng"
     try:
         if os.path.exists(test_path):
@@ -193,7 +216,6 @@ def inicializar_entorno():
         # Modo local / fallback
         local_dir = "/home/tacacsd/frontTacacs/config"
         os.makedirs(local_dir, exist_ok=True)
-        os.makedirs("/home/tacacsd/frontTacacs/logs", exist_ok=True)
         
         TAC_CONFIG_PATH = os.path.join(local_dir, "usuarios_gui.cfg")
         MAIN_CONFIG_PATH = os.path.join(local_dir, "tac_plus-ng.cfg")
@@ -416,6 +438,136 @@ def guardar_configuracion(config_text: str = Form(...), db: Session = Depends(da
             os.remove(temp_path)
         return JSONResponse(content={"status": "error", "message": error_msg}, status_code=400)
 
+# ==================== EXPORTACIÓN E IMPORTACIÓN DE RESPALDOS ====================
+
+@app.get("/configuracion/exportar")
+def exportar_configuracion(db: Session = Depends(database.get_db)):
+    try:
+        usuarios = db.query(models.Usuario).all()
+        dispositivos = db.query(models.Dispositivo).all()
+        politicas = db.query(models.PoliticaComando).all()
+        
+        data = {
+            "usuarios": [
+                {"username": u.username, "password": u.password, "profile": u.profile}
+                for u in usuarios
+            ],
+            "dispositivos": [
+                {"name": d.name, "address": d.address, "key": d.key}
+                for d in dispositivos
+            ],
+            "politicas_comando": [
+                {"profile": p.profile, "command": p.command, "action": p.action}
+                for p in politicas
+            ]
+        }
+        
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        filename = f"tacacs_backup_{timestamp}.json"
+        
+        return JSONResponse(
+            content=data,
+            headers={"Content-Disposition": f"attachment; filename={filename}"}
+        )
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error al exportar: {str(e)}")
+
+@app.post("/configuracion/importar")
+async def importar_configuracion(
+    file: UploadFile = File(...),
+    mode: str = Form(...),
+    db: Session = Depends(database.get_db)
+):
+    try:
+        contents = await file.read()
+        backup_data = json.loads(contents.decode("utf-8"))
+    except Exception as e:
+        return JSONResponse(status_code=400, content={"status": "error", "message": f"El archivo no es un JSON válido: {str(e)}"})
+    
+    if not isinstance(backup_data, dict) or not all(k in backup_data for k in ["usuarios", "dispositivos", "politicas_comando"]):
+        return JSONResponse(
+            status_code=400, 
+            content={"status": "error", "message": "Estructura de respaldo inválida. Debe contener 'usuarios', 'dispositivos' y 'politicas_comando'."}
+        )
+        
+    try:
+        if mode == "overwrite":
+            db.query(models.Usuario).delete()
+            db.query(models.Dispositivo).delete()
+            db.query(models.PoliticaComando).delete()
+            
+        for u_data in backup_data.get("usuarios", []):
+            if not all(k in u_data for k in ["username", "password", "profile"]):
+                raise ValueError("Faltan campos requeridos en un usuario del respaldo.")
+            if mode == "merge":
+                exists = db.query(models.Usuario).filter(models.Usuario.username == u_data["username"]).first()
+                if exists:
+                    continue
+            nuevo_usuario = models.Usuario(
+                username=u_data["username"],
+                password=u_data["password"],
+                profile=u_data["profile"]
+            )
+            db.add(nuevo_usuario)
+            
+        for d_data in backup_data.get("dispositivos", []):
+            if not all(k in d_data for k in ["name", "address", "key"]):
+                raise ValueError("Faltan campos requeridos en un dispositivo del respaldo.")
+            if mode == "merge":
+                exists = db.query(models.Dispositivo).filter(models.Dispositivo.name == d_data["name"]).first()
+                if exists:
+                    continue
+            nuevo_disp = models.Dispositivo(
+                name=d_data["name"],
+                address=d_data["address"],
+                key=d_data["key"]
+            )
+            db.add(nuevo_disp)
+            
+        for p_data in backup_data.get("politicas_comando", []):
+            if not all(k in p_data for k in ["profile", "command", "action"]):
+                raise ValueError("Faltan campos requeridos en una política del respaldo.")
+            if mode == "merge":
+                exists = db.query(models.PoliticaComando).filter(
+                    models.PoliticaComando.profile == p_data["profile"],
+                    models.PoliticaComando.command == p_data["command"],
+                    models.PoliticaComando.action == p_data["action"]
+                ).first()
+                if exists:
+                    continue
+            nueva_pol = models.PoliticaComando(
+                profile=p_data["profile"],
+                command=p_data["command"],
+                action=p_data["action"]
+            )
+            db.add(nueva_pol)
+            
+        db.flush()
+        
+        success, msg = aplicar_configuracion_tacacs(db)
+        
+        if success:
+            db.commit()
+            return JSONResponse(content={"status": "success", "message": "Respaldo importado con éxito."})
+        else:
+            db.rollback()
+            aplicar_configuracion_tacacs(db)
+            return JSONResponse(
+                status_code=400,
+                content={
+                    "status": "error",
+                    "message": f"Fallo en la validación sintáctica de TACACS+ con los datos importados. Los cambios han sido revertidos. Detalle: {msg}"
+                }
+            )
+            
+    except Exception as e:
+        db.rollback()
+        try:
+            aplicar_configuracion_tacacs(db)
+        except Exception:
+            pass
+        return JSONResponse(status_code=400, content={"status": "error", "message": f"Error al procesar la importación: {str(e)}"})
+
 # ==================== GESTIÓN DE DISPOSITIVOS ====================
 
 @app.get("/dispositivos", response_class=HTMLResponse)
@@ -530,18 +682,22 @@ def eliminar_politica(politica_id: int, db: Session = Depends(database.get_db)):
 @app.get("/api/logs/accounting")
 def api_accounting_logs():
     accounting_path = "/home/tacacsd/frontTacacs/logs/accounting.log"
+    authorization_path = "/home/tacacsd/frontTacacs/logs/authorization.log"
     logs = []
     
+    # 1. Leer accounting.log si tiene registros
     if os.path.exists(accounting_path):
         try:
             with open(accounting_path, "r") as f:
                 lines = f.readlines()
-                # Parse last 100 lines
                 for line in lines[-100:]:
                     parts = line.strip().split("\t")
                     if len(parts) >= 5:
+                        timestamp = parts[0]
+                        if " -" in timestamp:
+                            timestamp = timestamp.split(" -")[0]
                         logs.append({
-                            "timestamp": parts[0],
+                            "timestamp": timestamp,
                             "host": parts[1],
                             "user": parts[2],
                             "command": parts[3],
@@ -550,32 +706,36 @@ def api_accounting_logs():
         except Exception as e:
             print("Error parsing accounting log:", e)
             
-    # If empty, generate realistic simulated accounting logs
-    if not logs:
-        users = ["arturo.serrano", "prueba_uno", "prueba"]
-        hosts = ["10.1.7.52"]
-        commands = [
-            ("show running-config", "permit"),
-            ("configure terminal", "permit"),
-            ("show interfaces status", "permit"),
-            ("reload", "deny (policy restricted)"),
-            ("reboot", "deny (policy restricted)"),
-            ("show ip route", "permit")
-        ]
-        
-        for i in range(15):
-            time_str = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-            user = random.choice(users)
-            host = random.choice(hosts)
-            cmd_action = random.choice(commands)
-            logs.append({
-                "timestamp": time_str,
-                "host": host,
-                "user": user,
-                "command": cmd_action[0],
-                "action": cmd_action[1]
-            })
+    # 2. Leer authorization.log para capturar comandos autorizados en tiempo real
+    if os.path.exists(authorization_path):
+        try:
+            with open(authorization_path, "r") as f:
+                lines = f.readlines()
+                for line in lines[-100:]:
+                    parts = line.strip().split("\t")
+                    if len(parts) >= 8:
+                        cmd = parts[7].replace(" <cr>", "").strip()
+                        if cmd and cmd != "":
+                            subparts = parts[0].split(" ")
+                            if len(subparts) >= 4:
+                                timestamp = f"{subparts[0]} {subparts[1]}"
+                                host = subparts[3]
+                            else:
+                                timestamp = parts[0]
+                                host = "Desconocido"
+                            
+                            logs.append({
+                                "timestamp": timestamp,
+                                "host": host,
+                                "user": parts[1],
+                                "command": cmd,
+                                "action": parts[5]
+                            })
+        except Exception as e:
+            print("Error parsing authorization log for commands:", e)
             
+    # Ordenar cronológicamente por timestamp
+    logs.sort(key=lambda x: x["timestamp"])
     logs.reverse()
     return {"status": "success", "logs": logs}
 
@@ -626,10 +786,30 @@ def api_status():
 
 @app.get("/api/logs")
 def api_logs():
-    # Intentar obtener logs reales o simular
-    syslog_path = "/var/log/syslog"
+    # 1. Intentar obtener logs de los archivos personalizados configurados
+    authn_path = "/home/tacacsd/frontTacacs/logs/authentication.log"
+    authz_path = "/home/tacacsd/frontTacacs/logs/authorization.log"
     
-    # 1. Intentar con journalctl
+    custom_logs = []
+    
+    for path in [authn_path, authz_path]:
+        if os.path.exists(path) and os.access(path, os.R_OK):
+            try:
+                with open(path, "r") as f:
+                    lines = f.readlines()
+                    for line in lines[-50:]:
+                        clean_line = line.strip()
+                        if clean_line and not clean_line.startswith("#"):
+                            custom_logs.append(clean_line)
+            except Exception as e:
+                print(f"Error al leer {path}:", e)
+                
+    if custom_logs:
+        # Ordenar cronológicamente (dado que inician con timestamp)
+        custom_logs.sort()
+        return {"status": "success", "logs": custom_logs[-50:]}
+
+    # 2. Intentar con journalctl
     try:
         res = subprocess.run(["journalctl", "-u", "tac_plus-ng", "-n", "30", "--no-pager"], capture_output=True, text=True)
         if res.returncode == 0 and res.stdout:
@@ -638,7 +818,8 @@ def api_logs():
     except Exception:
         pass
         
-    # 2. Intentar leer syslog
+    # 3. Intentar leer syslog
+    syslog_path = "/var/log/syslog"
     if os.path.exists(syslog_path) and os.access(syslog_path, os.R_OK):
         try:
             with open(syslog_path, "r") as f:
@@ -649,7 +830,7 @@ def api_logs():
         except Exception:
             pass
             
-    # 3. Retornar simulación realista si no se puede leer el sistema
+    # 4. Retornar simulación realista si no se puede leer el sistema
     users = ["admin", "arturo.serrano", "readonly_user", "operator_demo"]
     actions = [
         "Authentication successful (cleartext)",

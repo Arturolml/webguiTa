@@ -53,6 +53,66 @@
     </div>
 </div>
 
+<!-- Backup and Restore Section -->
+<div class="premium-card animated-fade-in" style="animation-delay: 0.2s; margin-top: 2rem; padding: 2rem;">
+    <div style="margin-bottom: 1.5rem; display: flex; align-items: center; gap: 0.75rem; border-bottom: 1px solid var(--border-color); padding-bottom: 1rem;">
+        <i class="fa-solid fa-database" style="font-size: 1.5rem; color: var(--accent-emerald);"></i>
+        <div>
+            <h2 style="font-size: 1.25rem; font-weight: 700; color: white; margin: 0;">Gestión de Respaldos (Base de Datos AAA)</h2>
+            <p style="font-size: 0.85rem; color: var(--text-secondary); margin: 0.2rem 0 0 0;">Exporta o importa la base de datos de usuarios, dispositivos y políticas en formato JSON.</p>
+        </div>
+    </div>
+    
+    <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 2.5rem;">
+        <!-- Panel Izquierdo: Exportar -->
+        <div style="display: flex; flex-direction: column; justify-content: space-between; background: rgba(255,255,255,0.01); border: 1px solid var(--border-color); border-radius: 12px; padding: 1.5rem;">
+            <div>
+                <h3 style="font-size: 1.05rem; font-weight: 600; color: white; margin-bottom: 0.75rem; display: flex; align-items: center; gap: 0.5rem;">
+                    <i class="fa-solid fa-cloud-arrow-down" style="color: var(--accent-indigo);"></i> Exportar Datos
+                </h3>
+                <p style="font-size: 0.85rem; color: var(--text-secondary); line-height: 1.5; margin-bottom: 1.5rem;">
+                    Descarga una copia completa en un archivo estructurado `.json` que contiene todos los <strong>Usuarios AAA</strong>, <strong>Equipos de Red</strong> y <strong>Políticas de Comando</strong> actualmente registrados en la interfaz web.
+                </p>
+            </div>
+            <a href="/configuracion/exportar" class="btn-premium-indigo" style="justify-content: center; text-decoration: none;">
+                <i class="fa-solid fa-file-export"></i> Descargar Respaldo JSON
+            </a>
+        </div>
+        
+        <!-- Panel Derecho: Importar -->
+        <div style="background: rgba(255,255,255,0.01); border: 1px solid var(--border-color); border-radius: 12px; padding: 1.5rem;">
+            <h3 style="font-size: 1.05rem; font-weight: 600; color: white; margin-bottom: 0.75rem; display: flex; align-items: center; gap: 0.5rem;">
+                <i class="fa-solid fa-cloud-arrow-up" style="color: var(--accent-emerald);"></i> Importar Datos
+            </h3>
+            
+            <form id="form-import" onsubmit="importBackup(event)" enctype="multipart/form-data">
+                <div class="form-group" style="margin-bottom: 1rem;">
+                    <label class="form-label">Archivo de Respaldo (.json)</label>
+                    <input type="file" id="import-file" accept=".json" required class="form-control-premium" style="padding: 0.5rem;">
+                </div>
+                
+                <div class="form-group" style="margin-bottom: 1.5rem;">
+                    <label class="form-label">Modo de Restauración</label>
+                    <div style="display: flex; gap: 1.5rem; margin-top: 0.5rem;">
+                        <label style="display: flex; align-items: center; gap: 0.5rem; font-size: 0.85rem; color: var(--text-primary); cursor: pointer;">
+                            <input type="radio" name="import-mode" value="merge" checked style="accent-color: var(--accent-indigo); width: 16px; height: 16px;">
+                            <span>Combinar (Mantener actuales)</span>
+                        </label>
+                        <label style="display: flex; align-items: center; gap: 0.5rem; font-size: 0.85rem; color: var(--text-primary); cursor: pointer;">
+                            <input type="radio" name="import-mode" value="overwrite" style="accent-color: var(--accent-rose); width: 16px; height: 16px;">
+                            <span style="color: #fda4af;">Sobrescribir (Borrar actuales)</span>
+                        </label>
+                    </div>
+                </div>
+                
+                <button type="submit" id="btn-import-submit" class="btn-premium" style="width: 100%; justify-content: center;">
+                    <i class="fa-solid fa-file-import"></i> Subir y Restaurar copia
+                </button>
+            </form>
+        </div>
+    </div>
+</div>
+
 <script>
     // Validar sintaxis y guardar vía AJAX
     function saveConfiguration() {
@@ -139,6 +199,81 @@
             statusBox.className = "validation-status-box error";
             statusBox.innerHTML = '<i class="fa-solid fa-circle-exclamation"></i> Error de Conexión';
             consoleBox.textContent = `Error al validar en sandbox: ` + err;
+        });
+    }
+
+    // Importar copia de seguridad vía AJAX con validación y recarga
+    function importBackup(event) {
+        event.preventDefault();
+        
+        const fileInput = document.getElementById('import-file');
+        const modeInput = document.querySelector('input[name="import-mode"]:checked');
+        const btn = document.getElementById('btn-import-submit');
+        const consoleBox = document.getElementById('validation-console');
+        const statusBox = document.getElementById('validation-status-box');
+        
+        if (!fileInput.files || fileInput.files.length === 0) {
+            alert("Por favor, selecciona un archivo .json válido.");
+            return;
+        }
+        
+        const file = fileInput.files[0];
+        const mode = modeInput.value;
+        
+        const confirmMsg = mode === 'overwrite' 
+            ? "¿ESTÁS COMPLETAMENTE SEGURO? Esto eliminará todos tus usuarios, dispositivos y políticas actuales de la WebGUI para reemplazarlos con el respaldo."
+            : "¿Quieres importar este respaldo combinándolo con los datos actuales?";
+            
+        if (!confirm(confirmMsg)) {
+            return;
+        }
+        
+        btn.disabled = true;
+        btn.innerHTML = '<i class="fa-solid fa-circle-notch fa-spin"></i> Importando y validando...';
+        
+        consoleBox.textContent = `Iniciando importación en modo [${mode.toUpperCase()}]...\n` +
+                                 `Leyendo archivo: ${file.name} (${(file.size / 1024).toFixed(2)} KB)\n` +
+                                 `Subiendo datos a la sandbox de validación segura...\n`;
+        
+        const formData = new FormData();
+        formData.append('file', file);
+        formData.append('mode', mode);
+        
+        fetch('/configuracion/importar', {
+            method: 'POST',
+            body: formData
+        })
+        .then(res => res.json().then(data => ({ status: res.status, body: data })))
+        .then(res => {
+            btn.disabled = false;
+            btn.innerHTML = '<i class="fa-solid fa-file-import"></i> Subir y Restaurar copia';
+            
+            if (res.status === 200) {
+                statusBox.className = "validation-status-box";
+                statusBox.innerHTML = '<i class="fa-solid fa-circle-check"></i> ' + res.body.message;
+                consoleBox.textContent = `[BACKUP IMPORT SUCCESS] ${new Date().toLocaleString()}\n` +
+                                         `--> Base de datos SQLite actualizada correctamente.\n` +
+                                         `--> usuarios_gui.cfg regenerado y validado en sandbox.\n` +
+                                         `--> Daemon de TACACS+ recargado con los nuevos registros importados.\n\n` +
+                                         `¡Importación completada con éxito!`;
+                alert("¡Copia de seguridad importada con éxito! La WebGUI y el servicio TACACS+ han sido actualizados.");
+                window.location.reload();
+            } else {
+                statusBox.className = "validation-status-box error";
+                statusBox.innerHTML = '<i class="fa-solid fa-circle-exclamation"></i> Error al Importar Respaldo';
+                consoleBox.textContent = `[BACKUP IMPORT FAILED] ${new Date().toLocaleString()}\n` +
+                                         `--> Transacción de base de datos cancelada (Rollback automático).\n` +
+                                         `--> Ningún cambio fue guardado para garantizar estabilidad.\n\n` +
+                                         `Detalle del Error:\n----------------------------------------\n` +
+                                         res.body.message;
+            }
+        })
+        .catch(err => {
+            btn.disabled = false;
+            btn.innerHTML = '<i class="fa-solid fa-file-import"></i> Subir y Restaurar copia';
+            statusBox.className = "validation-status-box error";
+            statusBox.innerHTML = '<i class="fa-solid fa-circle-exclamation"></i> Error de Conexión';
+            consoleBox.textContent = `[CONNECTION ERROR] No se pudo comunicar con el servidor backend.\n` + err;
         });
     }
 </script>
