@@ -18,50 +18,6 @@ app = FastAPI(title="TACACS+ NG Premium WebGUI")
 os.makedirs("static/css", exist_ok=True)
 app.mount("/static", StaticFiles(directory="static"), name="static")
 
-import sys
-import pty
-import select
-
-def verify_linux_password(username: str, password: str) -> bool:
-    if not username or not password:
-        return False
-        
-    pid, fd = pty.fork()
-    
-    if pid == 0:
-        try:
-            os.execvp("su", ["su", "-c", "echo VALIDATED", username])
-        except Exception:
-            sys.exit(1)
-    else:
-        output = b""
-        status = 1
-        try:
-            r, w, x = select.select([fd], [], [], 2.0)
-            if fd in r:
-                os.read(fd, 1024)
-                os.write(fd, password.encode() + b"\n")
-                
-                while True:
-                    r, w, x = select.select([fd], [], [], 2.0)
-                    if fd in r:
-                        data = os.read(fd, 1024)
-                        if not data:
-                            break
-                        output += data
-                    else:
-                        break
-        except Exception as e:
-            print("Error durante la interacción con su:", e)
-        finally:
-            os.close(fd)
-            try:
-                _, status = os.waitpid(pid, 0)
-            except Exception:
-                status = 1
-                
-        decoded = output.decode(errors="ignore")
-        return "VALIDATED" in decoded and status == 0
 
 # Middleware de Autenticación Global
 @app.middleware("http")
@@ -89,8 +45,9 @@ def get_login(request: Request, error: str = None):
     return templates.TemplateResponse(request, "login.html", context={"error": error})
 
 @app.post("/login")
-def post_login(username: str = Form(...), password: str = Form(...)):
-    if verify_linux_password(username, password):
+def post_login(username: str = Form(...), password: str = Form(...), db: Session = Depends(database.get_db)):
+    user = db.query(models.Usuario).filter(models.Usuario.username == username).first()
+    if user and user.password == password:
         response = RedirectResponse(url="/", status_code=303)
         response.set_cookie(
             key="session_user",
@@ -287,6 +244,29 @@ def aplicar_configuracion_tacacs(db: Session):
     else:
         error_msg = validador.stderr or validador.stdout
         return False, error_msg
+
+# Seed del usuario administrador por defecto y sincronización inicial de TACACS+
+from database import SessionLocal
+db_seed = SessionLocal()
+try:
+    admin_exists = db_seed.query(models.Usuario).filter(models.Usuario.username == "admin").first()
+    if not admin_exists:
+        new_admin = models.Usuario(
+            username="admin",
+            password="Pi41n1RPXCGruC",
+            profile="admin_profile"
+        )
+        db_seed.add(new_admin)
+        db_seed.commit()
+        print("Usuario administrador base 'admin' inicializado correctamente.")
+    
+    # Asegurar que los archivos de configuración de TACACS+ estén sincronizados con la base de datos
+    try:
+        aplicar_configuracion_tacacs(db_seed)
+    except Exception as e:
+        print("Error al aplicar la configuración de TACACS+ en el arranque:", e)
+finally:
+    db_seed.close()
 
 # ==================== RUTAS WEB ====================
 
