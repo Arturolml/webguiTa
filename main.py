@@ -98,7 +98,7 @@ id = tac_plus-ng {{
     # 1. Definir los destinos de los archivos con sus respectivas rutas
     log acctlog {{
         destination = {os.path.join(PROJECT_ROOT, "logs/accounting.log")}
-        accounting format = "%Y-%m-%d %H:%M:%S\\t${nas}\\t${user}\\t${cmd}\\t${accttype}"
+        accounting format = "%Y-%m-%d %H:%M:%S\\t${{nas}}\\t${{user}}\\t${{cmd}}\\t${{accttype}}"
     }}
 
     log authnlog {{
