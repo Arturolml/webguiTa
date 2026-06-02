@@ -12,6 +12,8 @@ from fastapi.staticfiles import StaticFiles
 from sqlalchemy.orm import Session
 import models, database
 
+PROJECT_ROOT = os.path.dirname(os.path.abspath(__file__))
+
 app = FastAPI(title="TACACS+ NG Premium WebGUI")
 
 # Configurar directorio para archivos estáticos
@@ -95,16 +97,16 @@ id = tac_plus-ng {{
 
     # 1. Definir los destinos de los archivos con sus respectivas rutas
     log acctlog {{
-        destination = /home/tacacsd/frontTacacs/logs/accounting.log
+        destination = {os.path.join(PROJECT_ROOT, "logs/accounting.log")}
         accounting format = "%Y-%m-%d %H:%M:%S\\t${nas}\\t${user}\\t${cmd}\\t${accttype}"
     }}
 
     log authnlog {{
-        destination = /home/tacacsd/frontTacacs/logs/authentication.log
+        destination = {os.path.join(PROJECT_ROOT, "logs/authentication.log")}
     }}
 
     log authzlog {{
-        destination = /home/tacacsd/frontTacacs/logs/authorization.log
+        destination = {os.path.join(PROJECT_ROOT, "logs/authorization.log")}
     }}
 
     # 2. Asignar cada proceso a su respectivo archivo de log personalizado
@@ -139,8 +141,8 @@ def inicializar_entorno():
     
     # Asegurar la existencia del directorio de logs en cualquier modo
     try:
-        os.makedirs("/home/tacacsd/frontTacacs/logs", exist_ok=True)
-        os.chmod("/home/tacacsd/frontTacacs/logs", 0o777)
+        os.makedirs(os.path.join(PROJECT_ROOT, "logs"), exist_ok=True)
+        os.chmod(os.path.join(PROJECT_ROOT, "logs"), 0o777)
     except Exception as e:
         print("Advertencia al crear o cambiar permisos del directorio de logs:", e)
         
@@ -171,7 +173,7 @@ def inicializar_entorno():
             crear_config_defecto_local()
     else:
         # Modo local / fallback
-        local_dir = "/home/tacacsd/frontTacacs/config"
+        local_dir = os.path.join(PROJECT_ROOT, "config")
         os.makedirs(local_dir, exist_ok=True)
         
         TAC_CONFIG_PATH = os.path.join(local_dir, "usuarios_gui.cfg")
@@ -661,8 +663,8 @@ def eliminar_politica(politica_id: int, db: Session = Depends(database.get_db)):
 
 @app.get("/api/logs/accounting")
 def api_accounting_logs():
-    accounting_path = "/home/tacacsd/frontTacacs/logs/accounting.log"
-    authorization_path = "/home/tacacsd/frontTacacs/logs/authorization.log"
+    accounting_path = os.path.join(PROJECT_ROOT, "logs/accounting.log")
+    authorization_path = os.path.join(PROJECT_ROOT, "logs/authorization.log")
     logs = []
     
     # 1. Leer accounting.log si tiene registros
@@ -767,8 +769,8 @@ def api_status():
 @app.get("/api/logs")
 def api_logs():
     # 1. Intentar obtener logs de los archivos personalizados configurados
-    authn_path = "/home/tacacsd/frontTacacs/logs/authentication.log"
-    authz_path = "/home/tacacsd/frontTacacs/logs/authorization.log"
+    authn_path = os.path.join(PROJECT_ROOT, "logs/authentication.log")
+    authz_path = os.path.join(PROJECT_ROOT, "logs/authorization.log")
     
     custom_logs = []
     

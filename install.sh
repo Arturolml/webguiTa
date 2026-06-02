@@ -21,9 +21,11 @@ if [ "$EUID" -ne 0 ]; then
   exit 1
 fi
 
-# Obtener el usuario real que ejecutó sudo
-REAL_USER=${SUDO_USER:-tacacsd}
-APP_DIR="/home/$REAL_USER/frontTacacs"
+# Obtener el directorio absoluto de la aplicación
+APP_DIR=$(cd "$(dirname "$0")" && pwd)
+
+# Obtener el usuario real que ejecutó sudo, o en su defecto el dueño de la carpeta
+REAL_USER=${SUDO_USER:-$(stat -c '%U' "$APP_DIR")}
 
 echo -e "${GREEN}[1/5] Detectando sistema e instalando dependencias de OS...${NC}"
 if [ -f /etc/debian_version ]; then
